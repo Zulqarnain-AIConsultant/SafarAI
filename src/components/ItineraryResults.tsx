@@ -3,7 +3,9 @@ import {
   Sunset, 
   Moon, 
   MapPin, 
+  Clock, 
   IndianRupee,
+  DollarSign,
   Shield,
   Heart,
   UtensilsCrossed,
@@ -12,19 +14,40 @@ import {
   Share2,
   RefreshCw,
   ChevronDown,
-  ChevronUp,
-  Lightbulb
+  ChevronUp
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { FormData } from "./ItineraryForm";
-import { GeneratedItinerary, ItineraryActivity } from "@/lib/gemini";
 
 interface ItineraryResultsProps {
   formData: FormData;
-  itineraryData: GeneratedItinerary;
   onModify: () => void;
+}
+
+interface Activity {
+  time: string;
+  title: string;
+  description: string;
+  duration: string;
+  costINR: number;
+  costUSD: number;
+  icon: "morning" | "afternoon" | "evening";
+}
+
+interface DayPlan {
+  day: number;
+  date: string;
+  theme: string;
+  activities: Activity[];
+  safetyTip: string;
+  cultureTip: string;
+  restaurant: {
+    name: string;
+    cuisine: string;
+    priceRange: string;
+  };
 }
 
 const cityNames: Record<string, string> = {
@@ -40,19 +63,92 @@ const cityNames: Record<string, string> = {
   "rishikesh": "Rishikesh",
 };
 
-const getTimeIcon = (time: string) => {
-  const lowerTime = time.toLowerCase();
-  if (lowerTime.includes("morning")) {
-    return <Sun className="w-4 h-4 text-gold" />;
-  } else if (lowerTime.includes("afternoon")) {
-    return <Sunset className="w-4 h-4 text-primary" />;
-  } else {
-    return <Moon className="w-4 h-4 text-navy" />;
+// Demo itinerary data
+const generateDemoItinerary = (formData: FormData): DayPlan[] => {
+  const cityItineraries: Record<string, DayPlan[]> = {
+    "new-delhi": [
+      {
+        day: 1,
+        date: "Day 1",
+        theme: "Historic Delhi",
+        activities: [
+          { time: "9:00 AM", title: "Red Fort", description: "Explore the magnificent Mughal-era fortress, a UNESCO World Heritage Site", duration: "2.5 hours", costINR: 500, costUSD: 6, icon: "morning" },
+          { time: "12:00 PM", title: "Chandni Chowk", description: "Walk through India's oldest and busiest market, sample street food", duration: "2 hours", costINR: 300, costUSD: 4, icon: "afternoon" },
+          { time: "4:00 PM", title: "Jama Masjid", description: "Visit one of India's largest mosques with stunning architecture", duration: "1.5 hours", costINR: 300, costUSD: 4, icon: "afternoon" },
+          { time: "7:00 PM", title: "Dinner at Karim's", description: "Legendary Mughlai restaurant since 1913", duration: "1.5 hours", costINR: 800, costUSD: 10, icon: "evening" },
+        ],
+        safetyTip: "Keep valuables secure in Chandni Chowk's crowded lanes. Use cycle rickshaws to navigate narrow streets.",
+        cultureTip: "Remove shoes before entering Jama Masjid. Women should carry a scarf to cover their heads.",
+        restaurant: { name: "Karim's", cuisine: "Mughlai", priceRange: "₹400-800 per person" }
+      },
+      {
+        day: 2,
+        date: "Day 2",
+        theme: "Modern Delhi & Monuments",
+        activities: [
+          { time: "8:00 AM", title: "India Gate", description: "Start your day at Delhi's iconic war memorial", duration: "1 hour", costINR: 0, costUSD: 0, icon: "morning" },
+          { time: "10:00 AM", title: "Humayun's Tomb", description: "Marvel at the precursor to the Taj Mahal", duration: "2 hours", costINR: 600, costUSD: 7, icon: "morning" },
+          { time: "2:00 PM", title: "Lodhi Gardens", description: "Peaceful stroll among 15th-century tombs", duration: "1.5 hours", costINR: 0, costUSD: 0, icon: "afternoon" },
+          { time: "5:00 PM", title: "Hauz Khas Village", description: "Trendy cafes, boutiques, and ancient ruins", duration: "3 hours", costINR: 500, costUSD: 6, icon: "evening" },
+        ],
+        safetyTip: "Stay hydrated and carry sunscreen. Book a reliable taxi or use metro for safe transport.",
+        cultureTip: "Tip 10-15% at restaurants. Bargaining is acceptable at markets but not in fixed-price stores.",
+        restaurant: { name: "Social", cuisine: "Multi-cuisine", priceRange: "₹500-1000 per person" }
+      },
+    ],
+    "jaipur": [
+      {
+        day: 1,
+        date: "Day 1",
+        theme: "Royal Jaipur",
+        activities: [
+          { time: "8:00 AM", title: "Amber Fort", description: "Majestic hilltop fortress with stunning views and intricate mirror work", duration: "3 hours", costINR: 500, costUSD: 6, icon: "morning" },
+          { time: "12:00 PM", title: "Jal Mahal", description: "Photo stop at the beautiful Water Palace in Man Sagar Lake", duration: "30 mins", costINR: 0, costUSD: 0, icon: "afternoon" },
+          { time: "2:00 PM", title: "City Palace", description: "Explore royal residence with museums and courtyards", duration: "2.5 hours", costINR: 700, costUSD: 8, icon: "afternoon" },
+          { time: "6:00 PM", title: "Hawa Mahal at Sunset", description: "Watch the Palace of Winds glow in golden light", duration: "1 hour", costINR: 200, costUSD: 2, icon: "evening" },
+        ],
+        safetyTip: "Hire guides from official counters only. Beware of gem scams - don't buy precious stones from strangers.",
+        cultureTip: "Dress modestly when visiting palaces. Photography may be restricted in some areas.",
+        restaurant: { name: "1135 AD", cuisine: "Royal Rajasthani", priceRange: "₹1500-2500 per person" }
+      },
+    ],
+  };
+
+  const defaultItinerary: DayPlan[] = [
+    {
+      day: 1,
+      date: "Day 1",
+      theme: "Arrival & Orientation",
+      activities: [
+        { time: "10:00 AM", title: "Hotel Check-in & Rest", description: "Settle into your accommodation and freshen up", duration: "2 hours", costINR: 0, costUSD: 0, icon: "morning" },
+        { time: "1:00 PM", title: "Local Lunch", description: "Experience authentic local cuisine at a nearby restaurant", duration: "1.5 hours", costINR: 500, costUSD: 6, icon: "afternoon" },
+        { time: "4:00 PM", title: "Neighborhood Walk", description: "Explore the local area, get familiar with surroundings", duration: "2 hours", costINR: 0, costUSD: 0, icon: "afternoon" },
+        { time: "7:00 PM", title: "Welcome Dinner", description: "Traditional dinner to start your Indian culinary journey", duration: "2 hours", costINR: 800, costUSD: 10, icon: "evening" },
+      ],
+      safetyTip: "Save emergency contacts in your phone. Download offline maps of the area.",
+      cultureTip: "Indians eat with their right hand traditionally. It's polite to finish everything on your plate.",
+      restaurant: { name: "Local Specialty Restaurant", cuisine: "Regional", priceRange: "₹300-600 per person" }
+    },
+  ];
+
+  const cityData = cityItineraries[formData.city] || defaultItinerary;
+  const result: DayPlan[] = [];
+
+  for (let i = 0; i < formData.days; i++) {
+    const basePlan = cityData[i % cityData.length];
+    result.push({
+      ...basePlan,
+      day: i + 1,
+      date: `Day ${i + 1}`,
+    });
   }
+
+  return result;
 };
 
-const ItineraryResults = ({ formData, itineraryData, onModify }: ItineraryResultsProps) => {
+const ItineraryResults = ({ formData, onModify }: ItineraryResultsProps) => {
   const [expandedDays, setExpandedDays] = useState<number[]>([1]);
+  const itinerary = generateDemoItinerary(formData);
 
   const toggleDay = (day: number) => {
     setExpandedDays(prev => 
@@ -60,6 +156,14 @@ const ItineraryResults = ({ formData, itineraryData, onModify }: ItineraryResult
         ? prev.filter(d => d !== day)
         : [...prev, day]
     );
+  };
+
+  const getTimeIcon = (icon: Activity["icon"]) => {
+    switch (icon) {
+      case "morning": return <Sun className="w-4 h-4 text-gold" />;
+      case "afternoon": return <Sunset className="w-4 h-4 text-primary" />;
+      case "evening": return <Moon className="w-4 h-4 text-navy" />;
+    }
   };
 
   return (
@@ -78,14 +182,9 @@ const ItineraryResults = ({ formData, itineraryData, onModify }: ItineraryResult
               Your Personalized Itinerary
             </h2>
             <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-              Crafted based on your interests with a {formData.budget} budget for your {formData.travelStyle} adventure.
+              Crafted based on your interests in {formData.interests.join(", ")} 
+              with a {formData.budget} budget for your {formData.travelStyle} adventure.
             </p>
-            
-            {/* Total Estimated Cost */}
-            <div className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 text-primary">
-              <IndianRupee className="w-4 h-4" />
-              <span className="font-medium">Estimated Total: {itineraryData.totalEstimatedCost}</span>
-            </div>
           </div>
 
           {/* Action Buttons */}
@@ -108,27 +207,9 @@ const ItineraryResults = ({ formData, itineraryData, onModify }: ItineraryResult
             </Button>
           </div>
 
-          {/* General Tips */}
-          {itineraryData.generalTips && itineraryData.generalTips.length > 0 && (
-            <div className="mb-8 p-6 rounded-2xl bg-gradient-to-r from-primary/5 to-secondary/5 border border-primary/20">
-              <div className="flex items-center gap-2 mb-4">
-                <Lightbulb className="w-5 h-5 text-primary" />
-                <h3 className="font-display font-semibold text-lg">General Tips for Your Trip</h3>
-              </div>
-              <ul className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {itineraryData.generalTips.map((tip, idx) => (
-                  <li key={idx} className="flex items-start gap-2 text-sm text-muted-foreground">
-                    <span className="text-primary mt-1">•</span>
-                    <span>{tip}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
           {/* Itinerary Days */}
           <div className="space-y-4">
-            {itineraryData.days.map((day) => (
+            {itinerary.map((day) => (
               <div 
                 key={day.day}
                 className={cn(
@@ -149,9 +230,7 @@ const ItineraryResults = ({ formData, itineraryData, onModify }: ItineraryResult
                     </div>
                     <div className="text-left">
                       <h3 className="font-display font-semibold text-lg">{day.date}</h3>
-                      <p className="text-muted-foreground text-sm">
-                        {day.activities.length} activities planned
-                      </p>
+                      <p className="text-muted-foreground">{day.theme}</p>
                     </div>
                   </div>
                   {expandedDays.includes(day.day) ? (
@@ -165,57 +244,73 @@ const ItineraryResults = ({ formData, itineraryData, onModify }: ItineraryResult
                 {expandedDays.includes(day.day) && (
                   <div className="px-4 md:px-6 pb-6 animate-fade-in">
                     {/* Activities */}
-                    <div className="space-y-4">
-                      {day.activities.map((activity: ItineraryActivity, idx: number) => (
+                    <div className="space-y-4 mb-6">
+                      {day.activities.map((activity, idx) => (
                         <div 
                           key={idx}
-                          className="p-4 rounded-xl bg-muted/30 hover:bg-muted/50 transition-colors"
+                          className="flex gap-4 p-4 rounded-xl bg-muted/30 hover:bg-muted/50 transition-colors"
                         >
-                          <div className="flex gap-4">
-                            <div className="flex flex-col items-center gap-1 min-w-[80px]">
-                              {getTimeIcon(activity.time)}
-                              <span className="text-xs text-muted-foreground text-center">
-                                {activity.time.split("(")[0].trim()}
+                          <div className="flex flex-col items-center gap-1">
+                            {getTimeIcon(activity.icon)}
+                            <span className="text-xs text-muted-foreground whitespace-nowrap">
+                              {activity.time}
+                            </span>
+                          </div>
+                          <div className="flex-1">
+                            <h4 className="font-semibold mb-1">{activity.title}</h4>
+                            <p className="text-sm text-muted-foreground mb-2">
+                              {activity.description}
+                            </p>
+                            <div className="flex flex-wrap items-center gap-3 text-xs">
+                              <span className="flex items-center gap-1 text-muted-foreground">
+                                <Clock className="w-3 h-3" />
+                                {activity.duration}
                               </span>
-                            </div>
-                            <div className="flex-1">
-                              <h4 className="font-semibold mb-1">{activity.activity}</h4>
-                              <p className="text-sm text-muted-foreground mb-3">
-                                {activity.description}
-                              </p>
-                              
-                              {/* Cost */}
-                              <div className="flex items-center gap-2 mb-3">
-                                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-secondary/10 text-secondary text-xs font-medium">
-                                  <IndianRupee className="w-3 h-3" />
-                                  {activity.cost}
-                                </span>
-                              </div>
-
-                              {/* Tips Grid */}
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
-                                {/* Safety Tip */}
-                                <div className="p-3 rounded-lg bg-destructive/5 border border-destructive/20">
-                                  <div className="flex items-center gap-2 mb-1">
-                                    <Shield className="w-3 h-3 text-destructive" />
-                                    <span className="font-medium text-xs">Safety Tip</span>
-                                  </div>
-                                  <p className="text-xs text-muted-foreground">{activity.safetyTip}</p>
-                                </div>
-
-                                {/* Cultural Note */}
-                                <div className="p-3 rounded-lg bg-secondary/5 border border-secondary/20">
-                                  <div className="flex items-center gap-2 mb-1">
-                                    <Heart className="w-3 h-3 text-secondary" />
-                                    <span className="font-medium text-xs">Cultural Note</span>
-                                  </div>
-                                  <p className="text-xs text-muted-foreground">{activity.culturalNote}</p>
-                                </div>
-                              </div>
+                              <span className="flex items-center gap-1 text-secondary">
+                                <IndianRupee className="w-3 h-3" />
+                                {activity.costINR.toLocaleString()}
+                              </span>
+                              <span className="flex items-center gap-1 text-muted-foreground">
+                                <DollarSign className="w-3 h-3" />
+                                {activity.costUSD}
+                              </span>
                             </div>
                           </div>
                         </div>
                       ))}
+                    </div>
+
+                    {/* Tips Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {/* Safety Tip */}
+                      <div className="p-4 rounded-xl bg-destructive/5 border border-destructive/20">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Shield className="w-4 h-4 text-destructive" />
+                          <span className="font-semibold text-sm">Safety Tip</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground">{day.safetyTip}</p>
+                      </div>
+
+                      {/* Culture Tip */}
+                      <div className="p-4 rounded-xl bg-secondary/5 border border-secondary/20">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Heart className="w-4 h-4 text-secondary" />
+                          <span className="font-semibold text-sm">Cultural Note</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground">{day.cultureTip}</p>
+                      </div>
+
+                      {/* Restaurant */}
+                      <div className="p-4 rounded-xl bg-primary/5 border border-primary/20">
+                        <div className="flex items-center gap-2 mb-2">
+                          <UtensilsCrossed className="w-4 h-4 text-primary" />
+                          <span className="font-semibold text-sm">Recommended</span>
+                        </div>
+                        <p className="text-xs font-medium">{day.restaurant.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {day.restaurant.cuisine} • {day.restaurant.priceRange}
+                        </p>
+                      </div>
                     </div>
                   </div>
                 )}

@@ -9,8 +9,6 @@ import CulturalGuide from "@/components/CulturalGuide";
 import EmergencySOS from "@/components/EmergencySOS";
 import AboutModal from "@/components/AboutModal";
 import Footer from "@/components/Footer";
-import { generateItinerary, GeneratedItinerary } from "@/lib/gemini";
-import { toast } from "sonner";
 
 const Index = () => {
   const [activeSection, setActiveSection] = useState("hero");
@@ -18,8 +16,6 @@ const Index = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [showResults, setShowResults] = useState(false);
   const [formData, setFormData] = useState<FormData | null>(null);
-  const [itineraryData, setItineraryData] = useState<GeneratedItinerary | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
   const planSectionRef = useRef<HTMLDivElement>(null);
   const translateSectionRef = useRef<HTMLDivElement>(null);
@@ -42,88 +38,33 @@ const Index = () => {
     setActiveSection("plan");
     setShowResults(false);
     setFormData(null);
-    setItineraryData(null);
-    setError(null);
     setTimeout(() => {
       planSectionRef.current?.scrollIntoView({ behavior: "smooth" });
     }, 100);
   };
 
-  const cityNames: Record<string, string> = {
-    "new-delhi": "New Delhi",
-    "mumbai": "Mumbai",
-    "bangalore": "Bangalore",
-    "jaipur": "Jaipur",
-    "goa": "Goa",
-    "kerala": "Kerala (Kochi)",
-    "agra": "Agra",
-    "varanasi": "Varanasi",
-    "udaipur": "Udaipur",
-    "rishikesh": "Rishikesh",
-  };
-
-  const interestLabels: Record<string, string> = {
-    "culture": "Culture & Heritage",
-    "food": "Food & Cuisine",
-    "adventure": "Adventure & Trekking",
-    "spirituality": "Spirituality & Yoga",
-    "nature": "Nature & Wildlife",
-    "shopping": "Shopping & Markets",
-    "beaches": "Beaches & Relaxation",
-    "photography": "Photography",
-  };
-
   const handleFormSubmit = async (data: FormData) => {
     setIsGenerating(true);
     setFormData(data);
-    setError(null);
     
-    try {
-      const cityName = cityNames[data.city] || data.city;
-      const interestNames = data.interests.map(i => interestLabels[i] || i);
-      
-      const itinerary = await generateItinerary(
-        data.days,
-        cityName,
-        interestNames,
-        data.budget,
-        data.travelStyle
-      );
-      
-      setItineraryData(itinerary);
-      setShowResults(true);
-      
-      // Scroll to results
-      setTimeout(() => {
-        window.scrollTo({ 
-          top: planSectionRef.current?.offsetTop || 0, 
-          behavior: "smooth" 
-        });
-      }, 100);
-    } catch (err) {
-      console.error("Error generating itinerary:", err);
-      const errorMessage = err instanceof Error ? err.message : "Unknown error";
-      
-      if (errorMessage.includes("429")) {
-        setError("Too many requests. Please wait a minute and try again.");
-      } else if (errorMessage.includes("JSON") || errorMessage.includes("processing")) {
-        setError("Error processing response. Please try again.");
-      } else {
-        setError("Unable to generate itinerary. Please check your connection and try again.");
-      }
-      
-      toast.error(error || "Failed to generate itinerary");
-      setShowResults(false);
-    } finally {
-      setIsGenerating(false);
-    }
+    // Simulate AI generation delay
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    
+    setIsGenerating(false);
+    setShowResults(true);
+    
+    // Scroll to results
+    setTimeout(() => {
+      window.scrollTo({ 
+        top: planSectionRef.current?.offsetTop || 0, 
+        behavior: "smooth" 
+      });
+    }, 100);
   };
 
   const handleModifyPreferences = () => {
     setShowResults(false);
     setFormData(null);
-    setItineraryData(null);
-    setError(null);
     planSectionRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
@@ -147,18 +88,15 @@ const Index = () => {
                 <LoadingAnimation />
               </div>
             </section>
-          ) : showResults && formData && itineraryData ? (
+          ) : showResults && formData ? (
             <ItineraryResults 
               formData={formData}
-              itineraryData={itineraryData}
               onModify={handleModifyPreferences}
             />
           ) : (
             <ItineraryForm 
               onSubmit={handleFormSubmit}
               isGenerating={isGenerating}
-              error={error}
-              onRetry={() => formData && handleFormSubmit(formData)}
             />
           )}
         </div>
