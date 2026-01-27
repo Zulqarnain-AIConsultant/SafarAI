@@ -7,6 +7,7 @@ import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
+// SafarAI - AI-Powered Travel Companion for India
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
