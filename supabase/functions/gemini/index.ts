@@ -22,11 +22,14 @@ serve(async (req) => {
       throw new Error("Prompt is required");
     }
 
-    const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent";
+    // Use gemini-2.0-flash model (current stable version)
+    const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
 
     const fullPrompt = systemPrompt 
       ? `${systemPrompt}\n\nUser: ${prompt}` 
       : prompt;
+
+    console.log("Calling Gemini API...");
 
     const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
       method: "POST",
@@ -47,13 +50,20 @@ serve(async (req) => {
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
-      console.error("Gemini API Error:", response.status, errorData);
+      const errorText = await response.text();
+      console.error("Gemini API Error:", response.status, errorText);
       
       if (response.status === 429) {
         return new Response(
           JSON.stringify({ error: "Too many requests. Please wait a minute and try again." }),
           { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      
+      if (response.status === 400 || response.status === 403) {
+        return new Response(
+          JSON.stringify({ error: "Invalid API key or request. Please check your Gemini API key." }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
       
@@ -64,6 +74,7 @@ serve(async (req) => {
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
 
     if (!text) {
+      console.error("No text in response:", JSON.stringify(data));
       throw new Error("No response from Gemini API");
     }
 
