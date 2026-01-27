@@ -11,9 +11,9 @@ serve(async (req) => {
   }
 
   try {
-    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-    if (!GEMINI_API_KEY) {
-      throw new Error("GEMINI_API_KEY is not configured");
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY) {
+      throw new Error("LOVABLE_API_KEY is not configured");
     }
 
     const { prompt, systemPrompt, type = "generate" } = await req.json();
@@ -22,60 +22,57 @@ serve(async (req) => {
       throw new Error("Prompt is required");
     }
 
-    // Use gemini-2.0-flash model (current stable version)
-    const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
+    const messages = [];
+    
+    if (systemPrompt) {
+      messages.push({ role: "system", content: systemPrompt });
+    }
+    
+    messages.push({ role: "user", content: prompt });
 
-    const fullPrompt = systemPrompt 
-      ? `${systemPrompt}\n\nUser: ${prompt}` 
-      : prompt;
+    console.log("Calling Lovable AI Gateway...");
 
-    console.log("Calling Gemini API...");
-
-    const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
+        "Authorization": `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        contents: [{
-          parts: [{
-            text: fullPrompt
-          }]
-        }],
-        generationConfig: {
-          temperature: type === "itinerary" ? 0.7 : 0.8,
-          maxOutputTokens: type === "itinerary" ? 8192 : 2048,
-        }
+        model: "google/gemini-3-flash-preview",
+        messages: messages,
+        temperature: type === "itinerary" ? 0.7 : 0.8,
+        max_tokens: type === "itinerary" ? 8192 : 2048,
       })
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("Gemini API Error:", response.status, errorText);
+      console.error("AI Gateway Error:", response.status, errorText);
       
       if (response.status === 429) {
         return new Response(
-          JSON.stringify({ error: "Too many requests. Please wait a minute and try again." }),
+          JSON.stringify({ error: "Rate limit exceeded. Please try again in a moment." }),
           { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
       
-      if (response.status === 400 || response.status === 403) {
+      if (response.status === 402) {
         return new Response(
-          JSON.stringify({ error: "Invalid API key or request. Please check your Gemini API key." }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          JSON.stringify({ error: "Usage limit reached. Please add credits to continue." }),
+          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
       
-      throw new Error(`Gemini API Error: ${response.status}`);
+      throw new Error(`AI Gateway Error: ${response.status}`);
     }
 
     const data = await response.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    const text = data.choices?.[0]?.message?.content;
 
     if (!text) {
       console.error("No text in response:", JSON.stringify(data));
-      throw new Error("No response from Gemini API");
+      throw new Error("No response from AI");
     }
 
     return new Response(JSON.stringify({ result: text }), {
