@@ -49,6 +49,14 @@ serve(async (req) => {
     if (!response.ok) {
       const errorData = await response.json();
       console.error("Gemini API Error:", response.status, errorData);
+      
+      if (response.status === 429) {
+        return new Response(
+          JSON.stringify({ error: "Too many requests. Please wait a minute and try again." }),
+          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      
       throw new Error(`Gemini API Error: ${response.status}`);
     }
 
