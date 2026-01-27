@@ -15,7 +15,9 @@ import {
   ShoppingBag,
   Palmtree,
   Camera,
-  Check
+  Check,
+  AlertCircle,
+  RefreshCw
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
@@ -24,6 +26,8 @@ import { cn } from "@/lib/utils";
 interface ItineraryFormProps {
   onSubmit: (data: FormData) => void;
   isGenerating: boolean;
+  error?: string | null;
+  onRetry?: () => void;
 }
 
 export interface FormData {
@@ -71,7 +75,7 @@ const travelStyles = [
   { value: "friends", label: "Friends Adventure", icon: "👯" },
 ];
 
-const ItineraryForm = ({ onSubmit, isGenerating }: ItineraryFormProps) => {
+const ItineraryForm = ({ onSubmit, isGenerating, error, onRetry }: ItineraryFormProps) => {
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState<FormData>({
     days: 7,
@@ -130,6 +134,27 @@ const ItineraryForm = ({ onSubmit, isGenerating }: ItineraryFormProps) => {
               Tell us about your dream India adventure
             </p>
           </div>
+
+          {/* Error Message */}
+          {error && (
+            <div className="mb-6 p-4 rounded-2xl bg-destructive/10 border border-destructive/30 flex items-center gap-3">
+              <AlertCircle className="w-5 h-5 text-destructive flex-shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm text-destructive font-medium">{error}</p>
+              </div>
+              {onRetry && (
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={onRetry}
+                  className="gap-2 border-destructive/30 text-destructive hover:bg-destructive/10"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  Try Again
+                </Button>
+              )}
+            </div>
+          )}
 
           {/* Progress Bar */}
           <div className="mb-8">

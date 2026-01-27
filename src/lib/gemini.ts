@@ -5,7 +5,32 @@ interface GeminiResponse {
   error?: string;
 }
 
-export async function callGemini(prompt: string, systemPrompt?: string, type: "generate" | "itinerary" | "translate" = "generate"): Promise<string> {
+export interface ItineraryActivity {
+  time: string;
+  activity: string;
+  description: string;
+  cost: string;
+  safetyTip: string;
+  culturalNote: string;
+}
+
+export interface ItineraryDay {
+  day: number;
+  date: string;
+  activities: ItineraryActivity[];
+}
+
+export interface GeneratedItinerary {
+  days: ItineraryDay[];
+  totalEstimatedCost: string;
+  generalTips: string[];
+}
+
+export async function callGemini(
+  prompt: string, 
+  systemPrompt?: string, 
+  type: "generate" | "itinerary" | "translate" = "generate"
+): Promise<string> {
   const { data, error } = await supabase.functions.invoke<GeminiResponse>("gemini", {
     body: { prompt, systemPrompt, type },
   });
@@ -28,31 +53,94 @@ export async function callGemini(prompt: string, systemPrompt?: string, type: "g
 
 // Specialized function for itinerary generation
 export async function generateItinerary(
-  destination: string,
-  duration: number,
-  travelStyle: string,
+  days: number,
+  startingCity: string,
   interests: string[],
-  budget: string
-): Promise<string> {
-  const systemPrompt = `You are an expert India travel planner. Create detailed, practical, and culturally authentic itineraries. 
-Include specific recommendations for:
-- Day-by-day activities with timings
-- Best local restaurants and street food spots
-- Cultural experiences and hidden gems
-- Transportation tips
-- Safety considerations
-- Budget estimates in INR
+  budgetLevel: string,
+  travelStyle: string
+): Promise<GeneratedItinerary> {
+  const systemPrompt = `You are an expert travel planner specializing in India tourism for foreign visitors. Generate detailed, personalized itineraries that are practical, safe, and culturally enriching.
 
-Format the response as a structured itinerary with clear sections for each day.`;
+IMPORTANT: Respond ONLY with valid JSON, no markdown formatting, no code blocks, no additional text.
 
-  const prompt = `Create a ${duration}-day travel itinerary for ${destination}, India.
-Travel Style: ${travelStyle}
-Interests: ${interests.join(", ")}
-Budget: ${budget}
+Generate a JSON response with this exact structure:
 
-Please provide a comprehensive day-by-day itinerary.`;
+{
+  "days": [
+    {
+      "day": 1,
+      "date": "Day 1",
+      "activities": [
+        {
+          "time": "Morning (9:00 AM - 12:00 PM)",
+          "activity": "Activity name",
+          "description": "Detailed description with specific locations and what to expect",
+          "cost": "₹500-800 ($6-10)",
+          "safetyTip": "Practical safety advice for this activity",
+          "culturalNote": "Cultural etiquette and customs to be aware of"
+        },
+        {
+          "time": "Afternoon (1:00 PM - 5:00 PM)",
+          "activity": "Activity name",
+          "description": "Detailed description",
+          "cost": "₹300-500 ($4-6)",
+          "safetyTip": "Safety advice",
+          "culturalNote": "Cultural note"
+        },
+        {
+          "time": "Evening (6:00 PM - 9:00 PM)",
+          "activity": "Activity name",
+          "description": "Detailed description",
+          "cost": "₹400-700 ($5-9)",
+          "safetyTip": "Safety advice",
+          "culturalNote": "Cultural note"
+        }
+      ]
+    }
+  ],
+  "totalEstimatedCost": "₹15,000-25,000 ($180-300) for entire trip",
+  "generalTips": [
+    "Important tip 1",
+    "Important tip 2",
+    "Important tip 3",
+    "Important tip 4"
+  ]
+}
 
-  return callGemini(prompt, systemPrompt, "itinerary");
+Include morning, afternoon, and evening activities for each day with accurate costs, practical safety tips, and cultural insights.`;
+
+  const userPrompt = `Create a ${days}-day itinerary for India starting from ${startingCity}.
+
+Travel preferences:
+- Interests: ${interests.join(', ')}
+- Budget level: ${budgetLevel}
+- Travel style: ${travelStyle}
+
+Generate a comprehensive, realistic itinerary with:
+- Specific activities and attractions for each time of day
+- Accurate cost estimates in both INR and USD
+- Practical safety tips for each activity
+- Cultural etiquette and customs to be aware of
+- Restaurant and food recommendations
+- Transportation suggestions between locations
+
+Return ONLY valid JSON with no markdown formatting, no code blocks, just the pure JSON object.`;
+
+  const rawResponse = await callGemini(userPrompt, systemPrompt, "itinerary");
+  
+  // Clean the response - remove markdown code blocks if present
+  const cleanedResponse = rawResponse
+    .replace(/```json\n?/g, '')
+    .replace(/```\n?/g, '')
+    .trim();
+  
+  try {
+    const itinerary = JSON.parse(cleanedResponse) as GeneratedItinerary;
+    return itinerary;
+  } catch (parseError) {
+    console.error("Failed to parse itinerary JSON:", cleanedResponse);
+    throw new Error("Error processing response. Please try again.");
+  }
 }
 
 // Specialized function for translation
