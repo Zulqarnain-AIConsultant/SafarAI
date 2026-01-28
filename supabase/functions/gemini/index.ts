@@ -5,23 +5,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// Rate limiting protection
-let lastRequestTime = 0;
-const MIN_REQUEST_INTERVAL = 4500; // 4.5 seconds between requests
-
-async function waitForRateLimit() {
-  const now = Date.now();
-  const timeSinceLastRequest = now - lastRequestTime;
-  
-  if (timeSinceLastRequest < MIN_REQUEST_INTERVAL) {
-    const waitTime = MIN_REQUEST_INTERVAL - timeSinceLastRequest;
-    console.log(`Rate limit protection: waiting ${waitTime}ms`);
-    await new Promise(resolve => setTimeout(resolve, waitTime));
-  }
-  
-  lastRequestTime = Date.now();
-}
-
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -29,92 +12,60 @@ serve(async (req) => {
   }
 
   try {
-    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-    if (!GEMINI_API_KEY) {
-      throw new Error("GEMINI_API_KEY is not configured");
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY) {
+      throw new Error("LOVABLE_API_KEY is not configured");
     }
 
     const { prompt, systemPrompt, messages, mode = "single" } = await req.json();
 
-    // Apply rate limiting
-    await waitForRateLimit();
-
-    const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent";
-
-    let contents;
+    let apiMessages;
     
     if (mode === "chat" && messages) {
       // Multi-turn conversation format
-      contents = messages.map((msg: { role: string; content: string }) => ({
-        role: msg.role === "user" ? "user" : "model",
-        parts: [{ text: msg.content }]
-      }));
+      apiMessages = [
+        { role: "system", content: systemPrompt || "You are a helpful AI assistant for travel in India." },
+        ...messages
+      ];
     } else {
       // Single-turn format
-      const fullPrompt = systemPrompt ? `${systemPrompt}\n\n${prompt}` : prompt;
-      contents = [{
-        parts: [{ text: fullPrompt }]
-      }];
+      apiMessages = [
+        { role: "system", content: systemPrompt || "You are a helpful AI assistant for travel in India." },
+        { role: "user", content: prompt }
+      ];
     }
 
-    const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
+        "Authorization": `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        contents,
-        generationConfig: {
-          temperature: 0.7,
-          topK: 40,
-          topP: 0.95,
-          maxOutputTokens: 8192,
-        },
-        safetySettings: [
-          {
-            category: "HARM_CATEGORY_HARASSMENT",
-            threshold: "BLOCK_MEDIUM_AND_ABOVE"
-          },
-          {
-            category: "HARM_CATEGORY_HATE_SPEECH",
-            threshold: "BLOCK_MEDIUM_AND_ABOVE"
-          },
-          {
-            category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-            threshold: "BLOCK_MEDIUM_AND_ABOVE"
-          },
-          {
-            category: "HARM_CATEGORY_DANGEROUS_CONTENT",
-            threshold: "BLOCK_MEDIUM_AND_ABOVE"
-          }
-        ]
+        model: "google/gemini-3-flash-preview",
+        messages: apiMessages,
       })
     });
 
     // Handle HTTP errors
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      console.error("Gemini API Error Response:", errorData);
+      console.error("AI Gateway Error Response:", errorData);
 
-      if (response.status === 404) {
+      if (response.status === 429) {
         return new Response(
-          JSON.stringify({ error: "API_NOT_FOUND", message: "API endpoint not found. Please check configuration." }),
-          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      } else if (response.status === 429) {
-        return new Response(
-          JSON.stringify({ error: "RATE_LIMIT", message: "Too many requests. Please wait 30 seconds and try again." }),
+          JSON.stringify({ error: "RATE_LIMIT", message: "Too many requests. Please wait and try again." }),
           { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      } else if (response.status === 402) {
+        return new Response(
+          JSON.stringify({ error: "PAYMENT_REQUIRED", message: "Please add credits to continue using AI features." }),
+          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       } else if (response.status === 400) {
         return new Response(
           JSON.stringify({ error: "INVALID_REQUEST", message: "Invalid request. Please try different inputs." }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      } else if (response.status === 401 || response.status === 403) {
-        return new Response(
-          JSON.stringify({ error: "AUTH_ERROR", message: "API key authentication failed." }),
-          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       } else {
         return new Response(
@@ -127,7 +78,7 @@ serve(async (req) => {
     const data = await response.json();
 
     // Validate response structure
-    if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
+    if (!data.choices || !data.choices[0] || !data.choices[0].message) {
       console.error("Unexpected API response structure:", data);
       return new Response(
         JSON.stringify({ error: "INVALID_RESPONSE", message: "Unexpected response format from API" }),
@@ -135,15 +86,7 @@ serve(async (req) => {
       );
     }
 
-    // Check if content was blocked by safety filters
-    if (data.candidates[0].finishReason === "SAFETY") {
-      return new Response(
-        JSON.stringify({ error: "SAFETY_BLOCK", message: "Response was blocked by safety filters. Please rephrase your request." }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    const responseText = data.candidates[0].content.parts[0].text;
+    const responseText = data.choices[0].message.content;
 
     return new Response(
       JSON.stringify({ text: responseText }),
@@ -151,7 +94,7 @@ serve(async (req) => {
     );
 
   } catch (error) {
-    console.error("Gemini function error:", error);
+    console.error("AI function error:", error);
     return new Response(
       JSON.stringify({ 
         error: "UNKNOWN_ERROR", 
